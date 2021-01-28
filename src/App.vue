@@ -1,5 +1,10 @@
 <template>
   <div class="op-wrapper">
+    <div class="file-op">
+      <button @click="save">Save</button>
+      <button @click="load">Load</button>
+      <button @click="recover">Recover</button>
+    </div>
     <div class="parser">
       <textarea v-model="raw"></textarea>
       <button @click="parse(raw)">Parse</button>
@@ -20,16 +25,20 @@
       </div>
     </div>
     <div class="translation-blocks">
-      <div :class="{block: true, focus: !!p.focus}" :key="index" v-for="(p, index) in paragraphs">
+      <div
+        :class="{ block: true, focus: !!p.focus }"
+        :key="index"
+        v-for="(p, index) in paragraphs"
+      >
         <div :key="sentence" v-for="(sentence, i) in p.sentences">
           <div class="origin ez-read2">{{ sentence }}</div>
           <div
-            :ref="x => textdiv.push(x)"
+            :ref="(x) => textdiv.push(x)"
             class="textdiv ez-read3"
             @input="p.translations[i] = $event.target.innerText"
             @keydown="quickInput"
             @focus="p.focus = true"
-            @blur="p.focus = false"
+            @blur="p.focus = false, autosave()"
             contenteditable="true"
           >
             {{ p.translations[i] }}
@@ -51,10 +60,21 @@
   </div>
 </template>
 
+<script>
+</script>
+
 <script setup>
-import { ref } from "vue"
+const { dialog } = require("electron").remote
+const fs = require("fs")
+
+import { ref, watch, reactive } from "vue"
 import { splitParagraph, translateSentences } from "./deepl.js"
-import { getTopWords, createNewQuickWord, setQuickWord, moveToNext } from "./shortcut.js"
+import {
+  getTopWords,
+  createNewQuickWord,
+  setQuickWord,
+  moveToNext,
+} from "./shortcut.js"
 
 const raw = ref("")
 const output = ref("")
@@ -96,13 +116,62 @@ function parse(content) {
 }
 
 function generateOutput() {
-  output.value = paragraphs.value.map((x) => x.translations.join('')).join("\n\n")
+  output.value = paragraphs.value
+    .map((x) => x.translations.join(""))
+    .join("\n\n")
 }
 
 function quickInput(e) {
   createNewQuickWord(quickWords.value, e)
   setQuickWord(quickWords.value, e)
   moveToNext(textdiv.value, e)
+}
+
+function serialize() {
+  return JSON.stringify({
+    paragraphs: paragraphs.value,
+    quickWords: quickWords.value,
+  })
+}
+function deserialize(content) {
+  const obj = JSON.parse(content || {})
+  paragraphs.value = obj.paragraphs || []
+  quickWords.value = obj.quickWords || []
+}
+
+function autosave() {
+  localStorage.setItem("tempSaving", serialize())
+}
+
+function save() {
+  dialog
+    .showSaveDialog({
+      filters: [{ name: "CAT file", extensions: ["cat"] }],
+    })
+    .then((result) => {
+      if (result.filePath) {
+        fs.writeFileSync(result.filePath, serialize())
+        alert("File saved")
+      }
+    })
+}
+function load() {
+  dialog
+    .showOpenDialog({
+      filters: [{ name: "CAT file", extensions: ["cat"] }],
+      properties: ["openFile"],
+    })
+    .then((result) => {
+      if (result.filePaths) {
+        deserialize(fs.readFileSync(result.filePaths[0]))
+      }
+    })
+}
+
+function recover() {
+  if (confirm("Are you sure to recover?")) {
+    deserialize(localStorage.getItem("tempSaving"))
+  }
 }
 </script>
 
@@ -114,7 +183,10 @@ function quickInput(e) {
   font-style: normal;
   font-display: swap;
 }
-* {outline: 0; caret-color: black;}
+* {
+  outline: 0;
+  caret-color: black;
+}
 body {
   background: #eee;
 }
@@ -136,6 +208,13 @@ body {
   line-height: 1.3;
   border-radius: 4px 4px 0 0;
   font-family: "Crimson Pro";
+}
+.file-op {
+  display: flex;
+  flex-direction: column;
+}
+.file-op > button {
+  flex-grow: 1;
 }
 .textdiv {
   resize: none;
@@ -170,8 +249,8 @@ textarea {
   margin: 16px 8px;
   border-left: 2px solid #aaa;
   padding-left: 8px;
-  opacity: .6;
-  transition: all .5s;
+  opacity: 0.6;
+  transition: all 0.5s;
 }
 .block.focus {
   opacity: 1;

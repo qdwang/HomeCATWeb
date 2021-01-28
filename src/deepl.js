@@ -1,4 +1,4 @@
-const { postToDeepl } = require("./lib")
+const { postToDeepl } = require("electron").remote.require("./lib")
 
 let id = 1e4 * Math.round(1e4 * Math.random())
 
